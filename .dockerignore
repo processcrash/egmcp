@@ -1,0 +1,28 @@
+# .dockerignore — keep the build context small.
+
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.swp
+*.tmp
+*.log
+
+# Build artefacts
+bin
+web/dist
+web/node_modules
+**/.DS_Store
+
+# Docker bits themselves
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Local config & secrets
+configs/*.local.yaml
+configs/*/local.yaml
+data
+.env
+.env.*
