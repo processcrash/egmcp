@@ -26,6 +26,7 @@ import (
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/server"
+	"github.com/processcrash/egmcp/pkg/connector"
 )
 
 // version is set at build time via -ldflags.
@@ -76,11 +77,19 @@ func run() error {
 
 	// 4. Build the core router. In M0 the router is a stub that knows
 	//    about /healthz; richer wiring lands in later milestones.
-	router, err := core.New(cfg, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reg := connector.NewRegistry()
+	// Built-in connectors are registered in later milestones (M2+).
+	// The registry is still passed in so the platform can answer
+	// /api/v1/connectors/builtin even when no built-ins are present.
+
+	router, err := core.New(ctx, cfg, logger, reg)
 	if err != nil {
 		return fmt.Errorf("init core: %w", err)
 	}
-	defer func() { _ = router.Shutdown(context.Background()) }()
+	defer func() { _ = router.Close() }()
 
 	// 5. Build the HTTP server. The handler composition is intentionally
 	//    explicit so middleware ordering stays reviewable.

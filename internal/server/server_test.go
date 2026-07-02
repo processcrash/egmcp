@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,22 +10,32 @@ import (
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
+	"github.com/processcrash/egmcp/pkg/connector"
+	"go.uber.org/zap"
 )
 
-func TestHealthzReturns200(t *testing.T) {
+func newTestRouter(t *testing.T) (*core.Router, *config.Config, *zap.Logger) {
+	t.Helper()
 	logger, err := log.New("debug")
 	if err != nil {
 		t.Fatalf("logger: %v", err)
 	}
-
 	cfg := &config.Config{
-		Server: config.ServerConfig{Listen: ":0"},
-		DataDir: t.TempDir(),
+		Server:       config.ServerConfig{Listen: ":0"},
+		DataDir:      t.TempDir(),
+		InstancesDir: t.TempDir(),
+		PluginsDir:   t.TempDir(),
 	}
-	r, err := core.New(cfg, logger)
+	r, err := core.New(context.Background(), cfg, logger, connector.NewRegistry())
 	if err != nil {
 		t.Fatalf("core.New: %v", err)
 	}
+	return r, cfg, logger
+}
+
+func TestHealthzReturns200(t *testing.T) {
+	r, cfg, logger := newTestRouter(t)
+	defer r.Close()
 
 	mux := NewMux(r, cfg, logger)
 	srv := httptest.NewServer(mux)
@@ -56,15 +67,8 @@ func TestHealthzReturns200(t *testing.T) {
 }
 
 func TestReadyzMirrorsHealthz(t *testing.T) {
-	logger, err := log.New("debug")
-	if err != nil {
-		t.Fatalf("logger: %v", err)
-	}
-	cfg := &config.Config{DataDir: t.TempDir()}
-	r, err := core.New(cfg, logger)
-	if err != nil {
-		t.Fatalf("core.New: %v", err)
-	}
+	r, cfg, logger := newTestRouter(t)
+	defer r.Close()
 	mux := NewMux(r, cfg, logger)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

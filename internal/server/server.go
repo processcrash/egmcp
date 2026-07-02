@@ -11,9 +11,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/processcrash/egmcp/internal/api"
+	"github.com/processcrash/egmcp/internal/auth"
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/core"
-	"go.uber.org/zap"
+	"github.com/processcrash/egmcp/internal/log"
 )
 
 //go:embed assets
@@ -24,22 +29,39 @@ var assetsFS embed.FS
 // Middleware order matters: outermost wrappers (recovery, request id,
 // logging) run before business handlers and wrap every response.
 func NewMux(router *core.Router, cfg *config.Config, logger *zap.Logger) http.Handler {
-	mux := http.NewServeMux()
+	gin.SetMode(gin.ReleaseMode)
+	engine := gin.New()
+	engine.Use(ginRecovery(logger))
+	engine.Use(ginRequestID())
+	engine.Use(ginLogger(logger))
 
 	// Health probes.
-	mux.HandleFunc("/healthz", healthzHandler(router))
-	mux.HandleFunc("/readyz", healthzHandler(router)) // M0: readyz == healthz; later milestones diverge.
+	engine.GET("/healthz", gin.WrapF(healthzHandler(router)))
+	engine.GET("/readyz", gin.WrapF(healthzHandler(router)))
+
+	// REST API.
+	authMgr, err := auth.NewManager(
+		cfg.Auth.AdminUsername,
+		cfg.Auth.AdminPasswordHash,
+		cfg.Auth.JWTSecret,
+		auth.MustParseLifetime(""),
+	)
+	if err != nil {
+		// We've already validated the secret on boot, so this should
+		// be impossible. Still, log and fail closed.
+		logger.Error("auth manager init", log.Err(err))
+	}
+	api.Mount(engine, &api.API{
+		Router:   router,
+		Auth:     authMgr,
+		Registry: router.Registry(),
+		Logger:   logger,
+	})
 
 	// Static frontend. Falls back to /index.html for SPA routes.
-	mux.Handle("/", staticHandler(assetsFS, logger))
+	engine.NoRoute(gin.WrapH(staticHandler(assetsFS, logger)))
 
-	// Wrap with middleware. Composing manually (rather than via a 3rd
-	// party router) keeps the order explicit and reviewable.
-	return chain(
-		middlewareRecover(logger),
-		middlewareRequestID(),
-		middlewareLog(logger),
-	)(mux)
+	return engine
 }
 
 // healthzHandler reports the platform's liveness.
