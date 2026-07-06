@@ -5,8 +5,10 @@
 package server
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -82,26 +84,72 @@ func healthzHandler(router *core.Router) http.HandlerFunc {
 // frontend hasn't been built yet (e.g. running backend-only during
 // development), it returns a friendly placeholder instead of an
 // unhelpful 404.
+//
+// The handler implements SPA fallback itself: any request that does
+// not match an asset under assets/ is answered with /index.html.
+// We avoid http.FileServer because its directory-redirect behaviour
+// (301 redirects to add a trailing slash) does not compose well with
+// Gin and embedded filesystems.
 func staticHandler(emb embed.FS, logger *zap.Logger) http.Handler {
 	sub, err := fs.Sub(emb, "assets")
 	if err != nil || isEmpty(sub) {
 		logger.Warn("frontend assets not embedded — running backend-only")
 		return placeholderHandler()
 	}
-	fileServer := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// SPA fallback: try the asset, then fall back to index.html.
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" {
 			path = "index.html"
 		}
-		if _, err := fs.Stat(sub, path); err != nil {
-			path = "index.html"
+		// Direct asset hit.
+		if path != "index.html" {
+			f, err := sub.Open(path)
+			if err == nil {
+				defer f.Close()
+				serveFile(w, r, f, path)
+				return
+			}
 		}
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/" + path
-		fileServer.ServeHTTP(w, r2)
+		// Fallback to SPA entry.
+		f, err := sub.Open("index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer f.Close()
+		serveFile(w, r, f, "index.html")
 	})
+}
+
+func serveFile(w http.ResponseWriter, r *http.Request, f fs.File, path string) {
+	stat, err := f.Stat()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Set a basic content-type from extension.
+	switch {
+	case strings.HasSuffix(path, ".js"):
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	case strings.HasSuffix(path, ".css"):
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	case strings.HasSuffix(path, ".html"):
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	case strings.HasSuffix(path, ".svg"):
+		w.Header().Set("Content-Type", "image/svg+xml")
+	case strings.HasSuffix(path, ".json"):
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	// http.ServeContent wants an io.ReadSeeker; serve from a
+	// bytes.Buffer because fs.File's Seek is unreliable across
+	// embed.FS in Go 1.22.
+	data, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.ServeContent(w, r, path, stat.ModTime(), bytes.NewReader(data))
 }
 
 func isEmpty(fsys fs.FS) bool {

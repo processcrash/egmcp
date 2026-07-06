@@ -35,3 +35,4 @@ docker-compose.override.yml
 
 # Generated docs
 CHANGELOG.local.md
+web/tsconfig.tsbuildinfo

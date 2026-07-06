@@ -69,8 +69,8 @@ docs/superpowers/specs/     # design + plan docs
 
 | ID | Title | Status |
 |----|-------|--------|
-| M0 | Engineering skeleton (this release) | ✅ |
-| M1 | Config layer + auth + UI scaffold | ⏳ |
+| M0 | Engineering skeleton | ✅ |
+| M1 | Config layer + auth + UI scaffold | ✅ |
 | M2 | MCP protocol + filesystem connector | ⏳ |
 | M3 | MySQL / PostgreSQL | ⏳ |
 | M4 | OSS / S3 (MinIO) | ⏳ |
@@ -80,6 +80,31 @@ docs/superpowers/specs/     # design + plan docs
 | M8 | Audit, metrics, docs, GA | ⏳ |
 
 See [the plan](docs/superpowers/specs/2026-07-02-egmcp-plan.md) for per-milestone tasks and acceptance criteria.
+
+## M1 walkthrough
+
+After `docker run`, open `http://localhost:8080/`:
+
+1. **Sign in** with the admin credentials printed to container logs.
+2. **Create an instance** (`New instance`):
+   - Step 1: pick a slug (becomes `/mcp/{slug}`).
+   - Step 2: pick a connector type (built-ins register in M2+).
+   - Step 3: the schema-driven form is auto-generated from the connector's `Manifest.ConfigSchema`.
+3. **Manage** instances in the list view: refresh, test, delete. Each instance page shows the connector config and a "Copy JSON" button that produces an `mcpServers` snippet ready to paste into Claude Desktop / Cursor.
+
+The REST surface (all under `/api/v1`):
+
+| Method & Path | Purpose |
+| --- | --- |
+| `POST /auth/login` | public; returns JWT |
+| `GET /me` | admin profile |
+| `GET /connectors/builtin` | list registered connector types |
+| `GET/POST /instances` | list / create |
+| `GET/PUT/DELETE /instances/{slug}` | read / replace / delete |
+| `POST /instances/{slug}/test` | HealthCheck each connector |
+| `POST /instances/{slug}/rotate-key` | issue a new API key |
+| `GET /plugins` | plugin list (empty until M6) |
+| `GET /healthz` / `/readyz` | liveness |
 
 ## Configuration
 

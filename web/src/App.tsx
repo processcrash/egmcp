@@ -1,33 +1,33 @@
-import { Button, Card, Space, Typography } from 'antd';
-import { ApiOutlined } from '@ant-design/icons';
-
-const { Title, Paragraph } = Typography;
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { LoginPage } from './pages/Login';
+import { InstanceListPage } from './pages/InstanceList';
+import { InstanceCreatePage } from './pages/InstanceCreate';
+import { InstanceDetailPage } from './pages/InstanceDetail';
+import { PluginsPage } from './pages/Plugins';
+import { AppShell } from './components/AppShell';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
-  const checkHealth = () => {
-    fetch('/healthz')
-      .then((r) => r.json())
-      .then(console.log)
-      .catch(console.error);
-  };
-
   return (
-    <div style={{ padding: 32, maxWidth: 720, margin: '0 auto' }}>
-      <Title level={2}>
-        <Space>
-          <ApiOutlined />
-          egmcp
-        </Space>
-      </Title>
-      <Paragraph type="secondary">
-        Admin console scaffold — login, instance management and connector
-        configuration land in M1/M2.
-      </Paragraph>
-      <Card title="Status">
-        <Button type="primary" onClick={checkHealth}>
-          Check backend health
-        </Button>
-      </Card>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/instances" replace />} />
+          <Route path="instances" element={<InstanceListPage />} />
+          <Route path="instances/new" element={<InstanceCreatePage />} />
+          <Route path="instances/:slug" element={<InstanceDetailPage />} />
+          <Route path="plugins" element={<PluginsPage />} />
+          <Route path="*" element={<Navigate to="/instances" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
