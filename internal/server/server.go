@@ -21,6 +21,7 @@ import (
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
+	"github.com/processcrash/egmcp/internal/mcp"
 )
 
 //go:embed assets
@@ -60,10 +61,35 @@ func NewMux(router *core.Router, cfg *config.Config, logger *zap.Logger) http.Ha
 		Logger:   logger,
 	})
 
+	// MCP transport endpoints. The server set is constructed lazily
+	// — one *mcp.Server per slug, invalidated on instance change.
+	serverSet := mcp.NewServerSet(router, logger)
+	mcp.MountHTTP(engine, serverSet, logger, instanceAuthorizer(router))
+
 	// Static frontend. Falls back to /index.html for SPA routes.
 	engine.NoRoute(gin.WrapH(staticHandler(assetsFS, logger)))
 
 	return engine
+}
+
+// instanceAuthorizer returns a function that decides whether the
+// supplied (slug, key) pair is allowed to access the MCP endpoint
+// for the given slug. Admin tokens are accepted via the standard
+// Authorization: Bearer header at the transport layer; the function
+// here is only consulted for per-instance API keys.
+func instanceAuthorizer(router *core.Router) func(slug, key string) bool {
+	return func(slug, key string) bool {
+		inst, _ := router.GetInstance(slug)
+		if inst == nil {
+			return false
+		}
+		for _, k := range inst.APIKeys {
+			if k == key {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // healthzHandler reports the platform's liveness.

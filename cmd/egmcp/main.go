@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/processcrash/egmcp/internal/config"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/filesystem"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/server"
@@ -81,9 +82,11 @@ func run() error {
 	defer cancel()
 
 	reg := connector.NewRegistry()
-	// Built-in connectors are registered in later milestones (M2+).
-	// The registry is still passed in so the platform can answer
-	// /api/v1/connectors/builtin even when no built-ins are present.
+	// Built-in connectors register here. Each one ships in
+	// internal/connectors/builtin/<name>.
+	reg.MustRegister("filesystem", func() connector.Connector {
+		return filesystem.New()
+	})
 
 	router, err := core.New(ctx, cfg, logger, reg)
 	if err != nil {
