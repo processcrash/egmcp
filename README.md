@@ -71,13 +71,62 @@ docs/superpowers/specs/     # design + plan docs
 |----|-------|--------|
 | M0 | Engineering skeleton | ✅ |
 | M1 | Config layer + auth + UI scaffold | ✅ |
-| M2 | MCP protocol + filesystem connector | ⏳ |
+| M2 | MCP protocol + filesystem connector | ✅ |
 | M3 | MySQL / PostgreSQL | ⏳ |
 | M4 | OSS / S3 (MinIO) | ⏳ |
 | M5 | Swagger / OpenAPI | ⏳ |
 | M6 | Go Plugin loader | ⏳ |
 | M7 | Research-driven extras (Git, Fetch, …) | ⏳ |
 | M8 | Audit, metrics, docs, GA | ⏳ |
+
+## M2 walkthrough
+
+The platform now speaks the [Model Context Protocol](https://modelcontextprotocol.io).
+
+After creating an instance of the **filesystem** connector type, point any
+MCP-compatible client (Claude Desktop, Cursor, Cline, …) at:
+
+```
+http://<host>:8080/mcp/<slug>
+```
+
+…with `Authorization: Bearer <admin JWT>` (or a per-instance API key via
+`X-Instance-Key: <key>` / `?key=<key>`).
+
+The MCP layer is implemented in `internal/mcp` on top of
+[`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk):
+
+- **Streamable HTTP** at `/mcp/{slug}` (the 2025-03-26 transport).
+- **Legacy SSE** at `/mcp/{slug}/sse` + `/mcp/{slug}/messages`.
+- **OpenAPI 3.1** export at `/mcp/{slug}/openapi.json`.
+
+The filesystem connector exposes:
+
+| Tool | Description |
+|---|---|
+| `filesystem__read_file` | Read a UTF-8 text file |
+| `filesystem__write_file` | Write a UTF-8 text file (disabled read-only) |
+| `filesystem__list_dir` | List directory children (with optional hidden files) |
+| `filesystem__delete_file` | Delete a file or empty directory (destructive) |
+| `filesystem__search` | Recursive name search (case-insensitive) |
+
+Plus a single resource `fs://tree` returning the directory tree as JSON.
+
+**Sandbox**: every incoming path is canonicalised with
+`filepath.Clean("/" + p)` and joined to the configured root; symlinks are
+resolved and rejected if they point outside the root. Path traversal,
+absolute paths, and symlink escapes all fail closed.
+
+Verified end-to-end (with the embedded binary):
+
+| Step | Result |
+|---|---|
+| `POST /mcp/sandbox` initialize | 200 + `Mcp-Session-Id` |
+| `notifications/initialized` | 202 |
+| `tools/list` | 5 tools with full JSON schemas |
+| `tools/call filesystem__read_file` | returns file content |
+| `tools/call filesystem__read_file ../etc/passwd` | `isError: true` |
+| `GET /mcp/sandbox/openapi.json` | valid OpenAPI 3.1 |
 
 See [the plan](docs/superpowers/specs/2026-07-02-egmcp-plan.md) for per-milestone tasks and acceptance criteria.
 
