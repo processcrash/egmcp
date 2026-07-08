@@ -46,7 +46,7 @@ make docker-build        # build the image even without local Go
 
 ## Project layout
 
-```
+```text
 cmd/egmcp/                  # entrypoint
 internal/
   config/                   # YAML loading, ENV substitution, first-boot bootstrap
@@ -68,11 +68,11 @@ docs/superpowers/specs/     # design + plan docs
 ## Milestones
 
 | ID | Title | Status |
-|----|-------|--------|
+| --- | --- | --- |
 | M0 | Engineering skeleton | ✅ |
 | M1 | Config layer + auth + UI scaffold | ✅ |
 | M2 | MCP protocol + filesystem connector | ✅ |
-| M3 | MySQL / PostgreSQL | ⏳ |
+| M3 | MySQL / PostgreSQL | ✅ |
 | M4 | OSS / S3 (MinIO) | ⏳ |
 | M5 | Swagger / OpenAPI | ⏳ |
 | M6 | Go Plugin loader | ⏳ |
@@ -86,7 +86,7 @@ The platform now speaks the [Model Context Protocol](https://modelcontextprotoco
 After creating an instance of the **filesystem** connector type, point any
 MCP-compatible client (Claude Desktop, Cursor, Cline, …) at:
 
-```
+```text
 http://<host>:8080/mcp/<slug>
 ```
 
@@ -103,7 +103,7 @@ The MCP layer is implemented in `internal/mcp` on top of
 The filesystem connector exposes:
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `filesystem__read_file` | Read a UTF-8 text file |
 | `filesystem__write_file` | Write a UTF-8 text file (disabled read-only) |
 | `filesystem__list_dir` | List directory children (with optional hidden files) |
@@ -120,13 +120,46 @@ absolute paths, and symlink escapes all fail closed.
 Verified end-to-end (with the embedded binary):
 
 | Step | Result |
-|---|---|
+| --- | --- |
 | `POST /mcp/sandbox` initialize | 200 + `Mcp-Session-Id` |
 | `notifications/initialized` | 202 |
 | `tools/list` | 5 tools with full JSON schemas |
 | `tools/call filesystem__read_file` | returns file content |
 | `tools/call filesystem__read_file ../etc/passwd` | `isError: true` |
 | `GET /mcp/sandbox/openapi.json` | valid OpenAPI 3.1 |
+
+## M3 walkthrough
+
+Two new SQL connectors, **mysql** and **postgres**, share a
+`pkg/sqlconn` package that enforces the platform's security policies
+uniformly across drivers:
+
+- **Read-only mode** (default `true`) rejects any statement whose
+  first significant keyword is not `SELECT`/`WITH`/`SHOW`/`EXPLAIN`/
+  `DESCRIBE`/`TABLE`/`VALUES`.
+- **Statement timeout** (default 30s) bounds any single query.
+- **Row cap** truncates oversized result sets and flags `truncated`.
+- **Table allow-list**: when non-empty, queries referencing tables
+  outside the set fail closed. The check uses a small regex-based
+  parser (good enough for typical queries; not a full SQL grammar).
+
+Tool surface (same shape for both drivers):
+
+| Tool | Description |
+| --- | --- |
+| `sql_query` | Run a statement, return rows as JSON |
+| `list_databases` / `list_schemas` | List visible databases/schemas |
+| `list_tables` | List tables in the configured database/schema |
+| `describe_table` | Column metadata for a table |
+
+Bring up local fixtures for end-to-end testing:
+
+```bash
+docker compose -f deploy/docker/docker-compose.dev.yml up -d
+```
+
+Then point a mysql connector at `user:pass@tcp(localhost:3306)/egmcp_test`
+and a postgres connector at `postgres://egmcp:egmcp@localhost:5432/egmcp_test?sslmode=disable`.
 
 See [the plan](docs/superpowers/specs/2026-07-02-egmcp-plan.md) for per-milestone tasks and acceptance criteria.
 

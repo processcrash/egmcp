@@ -24,6 +24,8 @@ import (
 
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/filesystem"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/mysql"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/postgres"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/server"
@@ -86,6 +88,12 @@ func run() error {
 	// internal/connectors/builtin/<name>.
 	reg.MustRegister("filesystem", func() connector.Connector {
 		return filesystem.New()
+	})
+	reg.MustRegister("mysql", func() connector.Connector {
+		return mysql.New()
+	})
+	reg.MustRegister("postgres", func() connector.Connector {
+		return postgres.New()
 	})
 
 	router, err := core.New(ctx, cfg, logger, reg)
