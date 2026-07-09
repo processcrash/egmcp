@@ -25,7 +25,9 @@ import (
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/filesystem"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/mysql"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/oss"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/postgres"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/s3"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/server"
@@ -94,6 +96,12 @@ func run() error {
 	})
 	reg.MustRegister("postgres", func() connector.Connector {
 		return postgres.New()
+	})
+	reg.MustRegister("s3", func() connector.Connector {
+		return s3.New()
+	})
+	reg.MustRegister("oss", func() connector.Connector {
+		return oss.New()
 	})
 
 	router, err := core.New(ctx, cfg, logger, reg)

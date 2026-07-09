@@ -82,8 +82,9 @@ func (c *Connector) HealthCheck(ctx context.Context) error {
 	if c.client == nil {
 		return errors.New("oss: not initialised")
 	}
-	if c.bucket != nil {
-		return c.bucket.GetBucketInfo()
+	if c.cfg.Bucket != "" {
+		_, err := c.client.GetBucketInfo(c.cfg.Bucket)
+		return err
 	}
 	_, err := c.client.ListBuckets()
 	return err
@@ -113,7 +114,7 @@ func (c *Connector) Stat(ctx context.Context, bucket, key string) (objectstore.O
 	if err != nil {
 		return objectstore.Object{}, err
 	}
-	meta, err := b.GetObjectMeta(key)
+	hdr, err := b.GetObjectDetailedMeta(key)
 	if err != nil {
 		if isNotFound(err) {
 			return objectstore.Object{}, objectstore.ErrNotFound
@@ -121,18 +122,18 @@ func (c *Connector) Stat(ctx context.Context, bucket, key string) (objectstore.O
 		return objectstore.Object{}, err
 	}
 	out := objectstore.Object{Key: key}
-	if h, ok := meta["Content-Length"]; ok {
+	if h := hdr.Get("Content-Length"); h != "" {
 		var n int64
 		_, _ = fmt.Sscanf(h, "%d", &n)
 		out.Size = n
 	}
-	if h, ok := meta["Last-Modified"]; ok {
+	if h := hdr.Get("Last-Modified"); h != "" {
 		t, _ := time.Parse(time.RFC1123, h)
 		if !t.IsZero() {
 			out.LastModified = t
 		}
 	}
-	out.ETag = meta["ETag"]
+	out.ETag = strings.Trim(hdr.Get("Etag"), `"`)
 	return out, nil
 }
 
@@ -146,14 +147,6 @@ func (c *Connector) Get(ctx context.Context, bucket, key string) (io.ReadCloser,
 		return nil, objectstore.Object{}, err
 	}
 	meta := objectstore.Object{Key: key}
-	if h := body.HttpResponse().Header.Get("Content-Length"); h != "" {
-		var n int64
-		_, _ = fmt.Sscanf(h, "%d", &n)
-		meta.Size = n
-	}
-	if h := body.HttpResponse().Header.Get("Etag"); h != "" {
-		meta.ETag = h
-	}
 	return body, meta, nil
 }
 
@@ -192,11 +185,14 @@ func (c *Connector) List(ctx context.Context, bucket, prefix, marker, continuati
 	if continuationToken != "" {
 		marker = continuationToken
 	}
-	out, err := b.ListObjects(alioss.ListObjectsRequest{
-		Prefix:    prefix,
-		Marker:    marker,
-		MaxKeys:   maxKeys,
-	})
+	opts := []alioss.Option{
+		alioss.Prefix(prefix),
+		alioss.MaxKeys(maxKeys),
+	}
+	if marker != "" {
+		opts = append(opts, alioss.Marker(marker))
+	}
+	out, err := b.ListObjects(opts...)
 	if err != nil {
 		return objectstore.ListPage{}, err
 	}
@@ -205,9 +201,7 @@ func (c *Connector) List(ctx context.Context, bucket, prefix, marker, continuati
 		IsTruncated: out.IsTruncated,
 		NextMarker:  out.NextMarker,
 	}
-	for _, p := range out.CommonPrefixes {
-		page.Prefixes = append(page.Prefixes, p)
-	}
+	page.Prefixes = append(page.Prefixes, out.CommonPrefixes...)
 	for _, o := range out.Objects {
 		page.Objects = append(page.Objects, objectstore.Object{
 			Key:          o.Key,
