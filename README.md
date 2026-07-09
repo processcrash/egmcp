@@ -73,7 +73,7 @@ docs/superpowers/specs/     # design + plan docs
 | M1 | Config layer + auth + UI scaffold | ✅ |
 | M2 | MCP protocol + filesystem connector | ✅ |
 | M3 | MySQL / PostgreSQL | ✅ |
-| M4 | OSS / S3 (MinIO) | ⏳ |
+| M4 | OSS / S3 (MinIO) | ✅ |
 | M5 | Swagger / OpenAPI | ⏳ |
 | M6 | Go Plugin loader | ⏳ |
 | M7 | Research-driven extras (Git, Fetch, …) | ⏳ |
@@ -161,7 +161,32 @@ docker compose -f deploy/docker/docker-compose.dev.yml up -d
 Then point a mysql connector at `user:pass@tcp(localhost:3306)/egmcp_test`
 and a postgres connector at `postgres://egmcp:egmcp@localhost:5432/egmcp_test?sslmode=disable`.
 
-See [the plan](docs/superpowers/specs/2026-07-02-egmcp-plan.md) for per-milestone tasks and acceptance criteria.
+## M4 walkthrough
+
+Two object-storage drivers, **s3** (MinIO-compatible via
+[`aws-sdk-go-v2`](https://github.com/aws/aws-sdk-go-v2)) and **oss**
+(Aliyun OSS via the official SDK), share a `pkg/objectstore` package
+that exposes one `Backend` interface to MCP: `Stat`, `Get`, `Put`,
+`Delete`, `List`, `PresignGet`, `ListBuckets`.
+
+Tool surface (same shape for both drivers):
+
+| Tool | Description |
+| --- | --- |
+| `put_object` | Upload (text or base64) |
+| `get_object` | Download as base64 |
+| `delete_object` | Idempotent delete |
+| `list_objects` | List under an optional prefix |
+| `presign_get` | Time-limited GET URL |
+| `list_buckets` | List buckets visible to the credentials |
+
+Both connectors register in the admin console after restart; selecting
+them in the create-wizard yields a schema-driven form (access key,
+secret key, region/endpoint, optional default bucket).
+
+A **MinIO** fixture is included in `deploy/docker/docker-compose.dev.yml`
+with healthcheck on `localhost:9000` (root user `minio` /
+`minio12345`).
 
 ## M1 walkthrough
 
