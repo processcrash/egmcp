@@ -74,7 +74,7 @@ docs/superpowers/specs/     # design + plan docs
 | M2 | MCP protocol + filesystem connector | ✅ |
 | M3 | MySQL / PostgreSQL | ✅ |
 | M4 | OSS / S3 (MinIO) | ✅ |
-| M5 | Swagger / OpenAPI | ⏳ |
+| M5 | Swagger / OpenAPI | ✅ |
 | M6 | Go Plugin loader | ⏳ |
 | M7 | Research-driven extras (Git, Fetch, …) | ⏳ |
 | M8 | Audit, metrics, docs, GA | ⏳ |
@@ -187,6 +187,31 @@ secret key, region/endpoint, optional default bucket).
 A **MinIO** fixture is included in `deploy/docker/docker-compose.dev.yml`
 with healthcheck on `localhost:9000` (root user `minio` /
 `minio12345`).
+
+## M5 walkthrough
+
+The **swagger** connector wraps any OpenAPI 3.0 or 3.1 document. Given
+a spec URL (or file), it generates one MCP tool per path+method and
+forwards invocations to the upstream service.
+
+Tool names follow `call__<tag>__<method>__<path>`, e.g. a spec with
+`/pets/{id} GET` becomes `call__pets__GET__pets_id`. Parameters
+become a flat object keyed by parameter name; path tokens are
+substituted from the supplied args at invocation time; the request
+body is sent under a `body` key.
+
+Authentication supports the three most common OpenAPI flows:
+
+| Type | Config |
+| --- | --- |
+| `none` | (no auth headers added) |
+| `bearer` | `auth.bearer` is sent as `Authorization: Bearer <token>` |
+| `apiKey` | `auth.api_key_name / api_key_value` in `header` (default) or `query` |
+| `basic` | `auth.basic_user / basic_pass` via `SetBasicAuth` |
+
+An in-process token-bucket rate limiter (default 600 RPM, configurable
+through `max_rpm`) protects the upstream from runaway agents. Set
+`timeout_seconds` to bound each upstream call.
 
 ## M1 walkthrough
 
