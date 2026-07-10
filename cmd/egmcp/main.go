@@ -28,6 +28,7 @@ import (
 	"github.com/processcrash/egmcp/internal/connectors/builtin/oss"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/postgres"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/s3"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/swagger"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/server"
@@ -102,6 +103,9 @@ func run() error {
 	})
 	reg.MustRegister("oss", func() connector.Connector {
 		return oss.New()
+	})
+	reg.MustRegister("swagger", func() connector.Connector {
+		return swagger.New()
 	})
 
 	router, err := core.New(ctx, cfg, logger, reg)
