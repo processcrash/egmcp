@@ -31,6 +31,7 @@ import (
 	"github.com/processcrash/egmcp/internal/connectors/builtin/swagger"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
+	egmcpplugin "github.com/processcrash/egmcp/internal/plugin"
 	"github.com/processcrash/egmcp/internal/server"
 	"github.com/processcrash/egmcp/pkg/connector"
 )
@@ -107,6 +108,25 @@ func run() error {
 	reg.MustRegister("swagger", func() connector.Connector {
 		return swagger.New()
 	})
+
+	// Plugin system: load .so/.dll from data/plugins/ and register
+	// their Connectors under their declared names.
+	pluginMgr, err := egmcpplugin.NewManager(cfg.PluginsDir)
+	if err != nil {
+		logger.Warn("plugin manager init failed", log.Err(err))
+	} else {
+		if err := pluginMgr.LoadAll(); err != nil {
+			logger.Warn("some plugins failed to load", log.Err(err))
+		}
+		for name, c := range pluginMgr.Connectors() {
+			reg.MustRegister(name, func() connector.Connector { return c })
+			logger.Info("plugin connector registered",
+				log.String("name", name),
+				log.String("version", c.Manifest().Version),
+			)
+		}
+		defer func() { _ = os.RemoveAll(cfg.PluginsDir + "/.lock") }()
+	}
 
 	router, err := core.New(ctx, cfg, logger, reg)
 	if err != nil {
