@@ -75,7 +75,7 @@ docs/superpowers/specs/     # design + plan docs
 | M3 | MySQL / PostgreSQL | ✅ |
 | M4 | OSS / S3 (MinIO) | ✅ |
 | M5 | Swagger / OpenAPI | ✅ |
-| M6 | Go Plugin loader | ⏳ |
+| M6 | Go Plugin loader | ✅ |
 | M7 | Research-driven extras (Git, Fetch, …) | ⏳ |
 | M8 | Audit, metrics, docs, GA | ⏳ |
 
@@ -212,6 +212,63 @@ Authentication supports the three most common OpenAPI flows:
 An in-process token-bucket rate limiter (default 600 RPM, configurable
 through `max_rpm`) protects the upstream from runaway agents. Set
 `timeout_seconds` to bound each upstream call.
+
+## M6 walkthrough — Go Plugins
+
+Third parties can extend the platform by compiling a Go file into a
+shared library with `go build -buildmode=plugin`. Drop the result into
+`data/plugins/` (or upload via `POST /api/v1/plugins/upload`) and it
+becomes a first-class connector.
+
+The plugin must export a top-level variable named `Connector` (or
+`NewConnector` as a fallback) of type
+`connector.Connector` from `github.com/processcrash/egmcp/pkg/connector`:
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "github.com/processcrash/egmcp/pkg/connector"
+)
+
+var Connector connector.Connector = &hello{}
+
+type hello struct{ prefix string }
+
+func (h *hello) Manifest() connector.Manifest {
+    return connector.Manifest{
+        Name: "hello", Version: "0.1.0",
+        DisplayName: "Hello (sample)",
+        Capabilities: []string{connector.CapabilityTools},
+        ConfigSchema: connector.JSONSchema(`{ "type":"object", "properties": { "prefix": {"type":"string"} } }`),
+    }
+}
+// ... Init, HealthCheck, Shutdown, Tools, InvokeTool
+```
+
+Build it once and ship:
+
+```bash
+# Linux / macOS
+go build -buildmode=plugin -o hello.so .
+
+# Windows (PowerShell)
+go build -buildmode=plugin -o hello.dll .
+```
+
+REST surface (admin only):
+
+| Method & Path | Purpose |
+| --- | --- |
+| `GET /api/v1/plugins` | list scanned plugins + load status |
+| `POST /api/v1/plugins/upload` | multipart upload (`file=…`); max 50 MiB |
+| `DELETE /api/v1/plugins/{name}` | unload + delete file |
+
+Limitations: the plugin must be compiled with the same Go toolchain
+and C library family as the platform binary (Linux glibc / Windows
+MSVC). See `examples/plugin-hello/` for a working template.
 
 ## M1 walkthrough
 

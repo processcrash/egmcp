@@ -30,6 +30,7 @@ import (
 	"github.com/processcrash/egmcp/internal/auth"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
+	egmcpplugin "github.com/processcrash/egmcp/internal/plugin"
 	"github.com/processcrash/egmcp/internal/store"
 	"github.com/processcrash/egmcp/pkg/connector"
 )
@@ -44,6 +45,7 @@ type API struct {
 	Auth      *auth.Manager
 	Registry  *connector.Registry
 	Logger    *zap.Logger
+	Plugins   *egmcpplugin.Manager
 }
 
 // Mount registers the API on the provided engine. The caller is
@@ -60,6 +62,8 @@ func Mount(r *gin.Engine, api *API) {
 	authed.GET("/me", api.handleMe)
 	authed.GET("/connectors/builtin", api.handleBuiltinConnectors)
 	authed.GET("/plugins", api.handlePluginsList)
+	authed.POST("/plugins/upload", api.handlePluginUpload)
+	authed.DELETE("/plugins/:name", api.handlePluginDelete)
 
 	authed.GET("/instances", api.handleListInstances)
 	authed.POST("/instances", api.handleCreateInstance)
@@ -68,6 +72,79 @@ func Mount(r *gin.Engine, api *API) {
 	authed.DELETE("/instances/:slug", api.handleDeleteInstance)
 	authed.POST("/instances/:slug/test", api.handleTestInstance)
 	authed.POST("/instances/:slug/rotate-key", api.handleRotateKey)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// plugins
+// ─────────────────────────────────────────────────────────────────────
+
+func (a *API) handlePluginsList(c *gin.Context) {
+	if a.Plugins == nil {
+		c.JSON(http.StatusOK, gin.H{"plugins": []any{}})
+		return
+	}
+	manifests, err := a.Plugins.Scan()
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "SCAN_FAILED", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plugins": manifests})
+}
+
+func (a *API) handlePluginUpload(c *gin.Context) {
+	if a.Plugins == nil {
+		writeError(c, http.StatusServiceUnavailable, "PLUGINS_DISABLED", "plugin support is not enabled")
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "INVALID_INPUT", "missing file field")
+		return
+	}
+	if file.Size > 50*1024*1024 {
+		writeError(c, http.StatusBadRequest, "FILE_TOO_LARGE", "plugin exceeds 50MiB limit")
+		return
+	}
+	src, err := file.Open()
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "READ_FAILED", err.Error())
+		return
+	}
+	defer src.Close()
+	data := make([]byte, file.Size)
+	if _, err := src.Read(data); err != nil {
+		writeError(c, http.StatusInternalServerError, "READ_FAILED", err.Error())
+		return
+	}
+	if err := a.Plugins.SaveUpload(file.Filename, data); err != nil {
+		writeError(c, http.StatusBadRequest, "LOAD_FAILED", err.Error())
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"name": filepathBase(file.Filename), "size": file.Size})
+}
+
+func (a *API) handlePluginDelete(c *gin.Context) {
+	name := c.Param("name")
+	if a.Plugins == nil {
+		writeError(c, http.StatusServiceUnavailable, "PLUGINS_DISABLED", "plugin support is not enabled")
+		return
+	}
+	if err := a.Plugins.Delete(name); err != nil {
+		writeError(c, http.StatusBadRequest, "DELETE_FAILED", err.Error())
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// filepathBase is a tiny wrapper to avoid an extra import in this file
+// when the helper is the only consumer.
+func filepathBase(p string) string {
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' || p[i] == '\\' {
+			return p[i+1:]
+		}
+	}
+	return p
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -304,12 +381,6 @@ func (a *API) handleRotateKey(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"new_key": newKey, "slug": slug})
-}
-
-func (a *API) handlePluginsList(c *gin.Context) {
-	// Plugin management ships in M6. For M1 we expose a stable
-	// shape (empty list) so the UI can wire the page.
-	c.JSON(http.StatusOK, gin.H{"plugins": []any{}})
 }
 
 // ─────────────────────────────────────────────────────────────────────
