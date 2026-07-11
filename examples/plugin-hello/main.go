@@ -4,6 +4,9 @@
 //
 // and drop `hello.so` into the platform's data/plugins directory.
 // On Windows, use `-o hello.dll` instead.
+//
+//go:build ignore
+
 package main
 
 import (
