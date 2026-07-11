@@ -21,7 +21,7 @@ admin web console with schema-driven instance creation.
 | M4 | OSS / S3 (MinIO) | ✅ |
 | M5 | Swagger / OpenAPI | ✅ |
 | M6 | Go Plugin loader | ✅ |
-| M7 | Git + fetch extras | ⏳ |
+| M7 | Git + fetch extras | ✅ |
 | M8 | Audit, metrics, docs, GA | ⏳ |
 
 The design and the milestone plan live in
@@ -364,6 +364,32 @@ Secret references (`${VAR}` and `${VAR:-default}`) are resolved at
 startup. The default path resolution is shell-style: `${VAR}` requires
 the env var to be set (and non-empty to substitute); `${VAR:-default}`
 falls back to `default` when the var is unset or empty.
+
+### M7 — fetch + git
+
+The `fetch` connector is a thin HTTP client: `get`, `post`, `put`,
+`delete`, `head`. Configure a `base_url` and the four standard auth
+flows; the connector prepends the base URL to every per-call path and
+forwards the request. Bodies are UTF-8 by default; pass `base64: true`
+to upload binary. Response bodies are capped (default 8 MiB) with a
+`truncated` flag when the cap kicks in.
+
+The `git` connector shells out to the `git` CLI over a local
+repository path. It exposes read-only operations:
+
+| Tool | Description |
+| --- | --- |
+| `log` | Recent commits (configurable count + branch) |
+| `show` | A specific commit's metadata + diffstat |
+| `diff` | Between two refs (default: working tree vs HEAD) |
+| `status` | Porcelain v1 status |
+| `branches` | Local + remote branches, with the current one marked |
+| `blame` | Per-line authorship for a file (optionally a line range) |
+| `search` | `git grep` over tracked files |
+
+Both connectors are first-class in the admin console: select them
+in the create-wizard, fill in the schema-driven form, and the
+resulting tool inventory is exposed under `/mcp/{slug}`.
 
 ## License
 

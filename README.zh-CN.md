@@ -20,7 +20,7 @@ PostgreSQL、S3 / MinIO、阿里云 OSS、Swagger / OpenAPI、通用 HTTP
 | M4 | OSS / S3 (MinIO) | ✅ |
 | M5 | Swagger / OpenAPI | ✅ |
 | M6 | Go 插件加载器 | ✅ |
-| M7 | Git + fetch 增量 | ⏳ |
+| M7 | Git + fetch 增量 | ✅ |
 | M8 | 审计、指标、文档、GA | ⏳ |
 
 设计与里程碑规划见 [`docs/superpowers/specs/`](docs/superpowers/specs/)。
@@ -350,6 +350,30 @@ log_level: info
 敏感字段支持 `${VAR}` 与 `${VAR:-default}` 环境变量引用，启动时
 解析：未设置（且无默认值）时启动失败；设置为空字符串时使用
 默认值。
+
+### M7 — fetch + git
+
+`fetch` 连接器是一个轻量的 HTTP 客户端：提供 `get` / `post` /
+`put` / `delete` / `head` 五个工具。配置 `base_url` 与四种标准鉴权
+方式之一，连接器会自动把 `base_url` 拼到每次调用的 path 前再发出
+请求。请求体默认按 UTF-8 处理；上传二进制时设置 `base64: true`。
+响应体有上限（默认 8 MiB），超过会带上 `truncated` 标记。
+
+`git` 连接器通过 `git` CLI 操作一个本地仓库路径，只读：
+
+| 工具 | 说明 |
+| --- | --- |
+| `log` | 最近若干提交（可指定数量与分支） |
+| `show` | 单个提交的元数据与 diffstat |
+| `diff` | 比较两个 ref（默认：工作区 vs HEAD） |
+| `status` | Porcelain v1 状态 |
+| `branches` | 本地 + 远端分支，标注当前分支 |
+| `blame` | 文件逐行归属（可指定行号范围） |
+| `search` | 对 tracked 文件执行 `git grep` |
+
+两个连接器都已在管理控制台中作为一等类型出现：在创建向导里
+选好类型，填好 schema 驱动的表单，对应的工具集就会通过
+`/mcp/{slug}` 暴露出来。
 
 ## 许可协议
 
