@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"github.com/processcrash/egmcp/internal/config"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/fetch"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/filesystem"
+	"github.com/processcrash/egmcp/internal/connectors/builtin/git"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/mysql"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/oss"
 	"github.com/processcrash/egmcp/internal/connectors/builtin/postgres"
@@ -107,6 +109,12 @@ func run() error {
 	})
 	reg.MustRegister("swagger", func() connector.Connector {
 		return swagger.New()
+	})
+	reg.MustRegister("fetch", func() connector.Connector {
+		return fetch.New()
+	})
+	reg.MustRegister("git", func() connector.Connector {
+		return git.New()
 	})
 
 	// Plugin system: load .so/.dll from data/plugins/ and register
