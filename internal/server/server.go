@@ -11,17 +11,20 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/processcrash/egmcp/internal/api"
+	"github.com/processcrash/egmcp/internal/audit"
 	"github.com/processcrash/egmcp/internal/auth"
 	"github.com/processcrash/egmcp/internal/config"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
 	"github.com/processcrash/egmcp/internal/mcp"
+	"github.com/processcrash/egmcp/internal/metrics"
 )
 
 //go:embed assets
@@ -42,6 +45,18 @@ func NewMux(router *core.Router, cfg *config.Config, logger *zap.Logger) http.Ha
 	engine.GET("/healthz", gin.WrapF(healthzHandler(router)))
 	engine.GET("/readyz", gin.WrapF(healthzHandler(router)))
 
+	// M8: audit + metrics. Audit log lives under data/audit/; metrics
+	// register on a private Prometheus registry and are served by the
+	// /metrics endpoint. They are created before the REST API mount
+	// so the API can wire the audit recorder.
+	auditDir := filepath.Join(cfg.DataDir, "audit")
+	rec, err := audit.NewRecorder(auditDir, logger)
+	if err != nil {
+		logger.Warn("audit recorder init failed", log.Err(err))
+	}
+	prom := metrics.New()
+	engine.GET("/metrics", gin.WrapH(prom.Handler()))
+
 	// REST API.
 	authMgr, err := auth.NewManager(
 		cfg.Auth.AdminUsername,
@@ -59,12 +74,32 @@ func NewMux(router *core.Router, cfg *config.Config, logger *zap.Logger) http.Ha
 		Auth:     authMgr,
 		Registry: router.Registry(),
 		Logger:   logger,
+		Audit:    rec,
 	})
 
 	// MCP transport endpoints. The server set is constructed lazily
 	// — one *mcp.Server per slug, invalidated on instance change.
 	serverSet := mcp.NewServerSet(router, logger)
+
 	mcp.MountHTTP(engine, serverSet, logger, instanceAuthorizer(router))
+
+	// /audit/tail returns the last N lines of today's audit log as
+	// newline-delimited JSON. Useful for `curl`-based monitoring.
+	engine.GET("/audit/tail", gin.WrapF(func(w http.ResponseWriter, r *http.Request) {
+		if rec == nil {
+			http.Error(w, "audit unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		lines, err := rec.ReadTail(50)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		for _, l := range lines {
+			_, _ = w.Write([]byte(l + "\n"))
+		}
+	}))
 
 	// Static frontend. Falls back to /index.html for SPA routes.
 	engine.NoRoute(gin.WrapH(staticHandler(assetsFS, logger)))

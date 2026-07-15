@@ -23,10 +23,12 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/processcrash/egmcp/internal/audit"
 	"github.com/processcrash/egmcp/internal/auth"
 	"github.com/processcrash/egmcp/internal/core"
 	"github.com/processcrash/egmcp/internal/log"
@@ -46,6 +48,7 @@ type API struct {
 	Registry  *connector.Registry
 	Logger    *zap.Logger
 	Plugins   *egmcpplugin.Manager
+	Audit     *audit.Recorder
 }
 
 // Mount registers the API on the provided engine. The caller is
@@ -64,6 +67,7 @@ func Mount(r *gin.Engine, api *API) {
 	authed.GET("/plugins", api.handlePluginsList)
 	authed.POST("/plugins/upload", api.handlePluginUpload)
 	authed.DELETE("/plugins/:name", api.handlePluginDelete)
+	authed.GET("/audit", api.handleAuditList)
 
 	authed.GET("/instances", api.handleListInstances)
 	authed.POST("/instances", api.handleCreateInstance)
@@ -134,6 +138,30 @@ func (a *API) handlePluginDelete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// handleAuditList returns the most recent N audit events. Query
+// parameter `n` (default 50, capped at 500) controls the page size.
+func (a *API) handleAuditList(c *gin.Context) {
+	if a.Audit == nil {
+		c.JSON(http.StatusOK, gin.H{"events": []any{}})
+		return
+	}
+	n := 50
+	if v := c.Query("n"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	if n > 500 {
+		n = 500
+	}
+	events, err := a.Audit.Recent(n)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "AUDIT_READ_FAILED", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"events": events})
 }
 
 // filepathBase is a tiny wrapper to avoid an extra import in this file

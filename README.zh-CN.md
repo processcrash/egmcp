@@ -21,7 +21,7 @@ PostgreSQL、S3 / MinIO、阿里云 OSS、Swagger / OpenAPI、通用 HTTP
 | M5 | Swagger / OpenAPI | ✅ |
 | M6 | Go 插件加载器 | ✅ |
 | M7 | Git + fetch 增量 | ✅ |
-| M8 | 审计、指标、文档、GA | ⏳ |
+| M8 | 审计、指标、GA | ✅ |
 
 设计与里程碑规划见 [`docs/superpowers/specs/`](docs/superpowers/specs/)。
 

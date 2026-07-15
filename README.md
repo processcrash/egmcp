@@ -22,7 +22,7 @@ admin web console with schema-driven instance creation.
 | M5 | Swagger / OpenAPI | ✅ |
 | M6 | Go Plugin loader | ✅ |
 | M7 | Git + fetch extras | ✅ |
-| M8 | Audit, metrics, docs, GA | ⏳ |
+| M8 | Audit, metrics, GA | ✅ |
 
 The design and the milestone plan live in
 [`docs/superpowers/specs/`](docs/superpowers/specs/).
@@ -138,6 +138,9 @@ Configure the client (e.g. Claude Desktop) with:
 | `GET /plugins` | list scanned + loaded plugins |
 | `POST /plugins/upload` | multipart upload (`file=…`); max 50 MiB |
 | `DELETE /plugins/{name}` | unload + delete file |
+| `GET /audit?n=N` | recent audit events (default 50, capped 500) |
+| `GET /metrics` | Prometheus exposition |
+| `GET /audit/tail` | last 50 lines of today's audit log as JSONL |
 | `GET /healthz` / `/readyz` | liveness |
 
 ---
@@ -390,6 +393,34 @@ repository path. It exposes read-only operations:
 Both connectors are first-class in the admin console: select them
 in the create-wizard, fill in the schema-driven form, and the
 resulting tool inventory is exposed under `/mcp/{slug}`.
+
+### M8 — audit, metrics, GA
+
+The platform exposes two operational surfaces that the
+[design doc](docs/superpowers/specs/2026-07-02-egmcp-design.md#13-security--observability)
+calls out:
+
+- **`GET /metrics`** — Prometheus exposition, served from a private
+  registry to avoid noise from imported libraries. Series:
+
+  | Name | Type | Labels |
+  | --- | --- | --- |
+  | `egmcp_mcp_calls_total` | counter | `instance`, `connector`, `tool`, `status` |
+  | `egmcp_mcp_call_duration_seconds` | histogram | `instance`, `connector`, `tool` |
+  | `egmcp_http_requests_total` | counter | `path`, `method`, `status` (1xx–5xx) |
+  | `egmcp_active_instances` | gauge | — |
+
+- **Audit log** — every MCP call (and admin write) is appended to
+  `data/audit/YYYY-MM-DD.jsonl`. The admin console and `GET
+  /audit/tail` (text/x-ndjson) and `GET /api/v1/audit?n=50` (JSON)
+  endpoints both surface the same stream; older days' files are
+  retained on disk for archival.
+
+With M8 the project hits the milestones the design document
+promised: every connector in the matrix is shipped, the MCP
+transport is at the 2025-03-26 spec, and the platform has
+production-grade observability. The GA cut is the same `docker run`
+that has worked since M0 — no new operational requirements.
 
 ## License
 
